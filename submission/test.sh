@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # Import helper functions
-source submission/functions.sh
+# source submission/functions.sh
+source  functions.sh
 
 # Week One Exercise: Bitcoin Address Generation and Transaction Verification
 # This script demonstrates using the key concepts from previous exercises in a practical scenario
@@ -16,24 +17,27 @@ set -e
 # Set up the challenge scenario
 setup_challenge
 
+bwallet="btrustwallet"
+twallet="treasurewallet"
+
 # CHALLENGE PART 1: Create a wallet to track your discoveries
 echo "CHALLENGE 1: Create your explorer wallet"
 echo "----------------------------------------"
 echo "Create a wallet named 'btrustwallet' to track your Bitcoin exploration"
 # STUDENT TASK: Use bitcoin-cli to create a wallet named "btrustwallet"
 # WRITE YOUR SOLUTION BELOW:
-
+bitcoin-cli -regtest createwallet btrustwallet
 
 # Create a second wallet that will hold the treasure
 echo "Now, create another wallet called 'treasurewallet' to fund your adventure"
 # STUDENT TASK: Create another wallet called "treasurewallet"
 # WRITE YOUR SOLUTION BELOW:
-
+bitcoin-cli -regtest createwallet treasurewallet
 
 # Generate an address for mining in the treasure wallet
 # STUDENT TASK: Generate a new address in the treasurewallet
 # WRITE YOUR SOLUTION BELOW:
-TREASURE_ADDR=
+TREASURE_ADDR=$(bitcoin-cli -regtest -rpcwallet=$twallet  getnewaddress "Bech32 Address" bech32 )
 check_cmd "Address generation"
 echo "Mining to address: $TREASURE_ADDR"
 
@@ -47,7 +51,7 @@ echo "-----------------------------------------"
 echo "Check your wallet balance to see what resources you have to start"
 # STUDENT TASK: Get the balance of btrustwallet
 # WRITE YOUR SOLUTION BELOW:
-BALANCE=
+BALANCE=$(bitcoin-cli -regtest -rpcwallet=$bwallet getbalance)
 check_cmd "Balance check"
 echo "Your starting balance: $BALANCE BTC"
 
@@ -59,16 +63,16 @@ echo "The treasure hunt requires 4 different types of addresses to collect funds
 echo "Generate one of each address type (legacy, p2sh-segwit, bech32, bech32m)"
 # STUDENT TASK: Generate addresses of each type
 # WRITE YOUR SOLUTION BELOW:
-LEGACY_ADDR=
+LEGACY_ADDR=$(bitcoin-cli -regtest -rpcwallet=$bwallet  getnewaddress "Legacy Address" legacy)
 check_cmd "Legacy address generation"
 
-P2SH_ADDR=
+P2SH_ADDR=$(bitcoin-cli -regtest -rpcwallet=$bwallet  getnewaddress "P2SH-SegWit Address" p2sh-segwit)
 check_cmd "P2SH address generation"
 
-SEGWIT_ADDR=
+SEGWIT_ADDR=$(bitcoin-cli -regtest -rpcwallet=$bwallet  getnewaddress "Bech32 Address" bech32 )
 check_cmd "SegWit address generation"
 
-TAPROOT_ADDR=
+TAPROOT_ADDR=$(bitcoin-cli -regtest -rpcwallet=$bwallet  getnewaddress "Taproot Address" bech32m)
 check_cmd "Taproot address generation"
 
 echo "Your exploration addresses:"
@@ -83,9 +87,13 @@ echo "The treasure hunt begins! Coins are being sent to your addresses..."
 
 # Send treasure to each address using our helper function with fee handling
 send_with_fee "treasurewallet" "$LEGACY_ADDR" 1.0 "First clue: Verify this transaction"
+#b56a5143a4a02e92ac0aa288268fda0a948f37efa01c5c1606c69f391da35b4d
 send_with_fee "treasurewallet" "$P2SH_ADDR" 2.0 "Second clue: Needs validation" 
+#d8bbd37812ede49a28fe59ec31d9a40c33f9166b2356c16ea8ce8b80e1c7de27
 send_with_fee "treasurewallet" "$SEGWIT_ADDR" 3.0 "Third clue: Check descriptor"
+#090b4a42d9b1701cd67def6d1c9988d1b7b5cf462bd2c69d8ac475ae877b000a
 send_with_fee "treasurewallet" "$TAPROOT_ADDR" 4.0 "Final clue: Message verification"
+#0cbc4c814cdf67b4a3f4f9b4c81a661de53c6e91ebafcf1a74014fe452cf001a
 
 # Mine blocks to confirm the transactions
 mine_blocks 6 $TREASURE_ADDR
@@ -97,11 +105,11 @@ echo "-------------------------------"
 echo "Treasures have been sent to your addresses. Check how much you've collected!"
 # STUDENT TASK: Check wallet balance after receiving funds and calculate how much treasure was collected
 # WRITE YOUR SOLUTION BELOW:
-NEW_BALANCE=
+NEW_BALANCE=$(bitcoin-cli -regtest -rpcwallet="$bwallet" getbalance)
 check_cmd "New balance check"
 echo "Your treasure balance: $NEW_BALANCE BTC"
 
-COLLECTED=
+COLLECTED=$(echo "$NEW_BALANCE - $BALANCE" | bc)
 check_cmd "Balance calculation"
 echo "You've collected $COLLECTED BTC in treasures!"
 
@@ -112,7 +120,7 @@ echo "--------------------------------------------"
 echo "To ensure the P2SH vault is secure, verify it's a valid Bitcoin address"
 # STUDENT TASK: Validate the P2SH address
 # WRITE YOUR SOLUTION BELOW:
-P2SH_VALID=
+P2SH_VALID=$(bitcoin-cli -regtest validateaddress "$P2SH_ADDR" | jq -r '.isvalid')
 check_cmd "Address validation"
 echo "P2SH vault validation: $P2SH_VALID"
 
@@ -132,7 +140,7 @@ echo "Verify the signature to reveal the hidden message!"
 
 # This part is done for you - creating a signed message
 SECRET_MESSAGE="You've successfully completed the Bitcoin treasure hunt!"
-SIGNATURE=$(bitcoin-cli -regtest -rpcwallet=btrustwallet signmessage $LEGACY_ADDR "$SECRET_MESSAGE")
+SIGNATURE=$(bitcoin-cli -regtest -rpcwallet="$bwallet" signmessage $LEGACY_ADDR "$SECRET_MESSAGE")
 check_cmd "Message signing"
 echo "Address: $LEGACY_ADDR"
 echo "Signature: $SIGNATURE"
@@ -143,7 +151,7 @@ echo "For CI testing, we'll verify the correct message directly:"
 
 # STUDENT TASK: Verify the message
 # WRITE YOUR SOLUTION BELOW:
-VERIFY_RESULT=
+VERIFY_RESULT=$(bitcoin-cli -regtest -rpcwallet="$twallet" verifymessage $LEGACY_ADDR "$SIGNATURE" "$SECRET_MESSAGE")
 check_cmd "Message verification"
 echo "Message verification result: $VERIFY_RESULT"
 
@@ -155,46 +163,54 @@ else
   exit 1
 fi
 
-# CHALLENGE PART 7: Working with descriptors to find the final treasure
 echo ""
 echo "CHALLENGE 7: The descriptor treasure map"
 echo "-------------------------------------"
 echo "The final treasure is locked with an address derived from a descriptor."
 echo "Create a descriptor for your taproot address and derive the address to ensure it matches."
 
+
 # STUDENT TASK: Create a new taproot address
 # WRITE YOUR SOLUTION BELOW:
-NEW_TAPROOT_ADDR=
+NEW_TAPROOT_ADDR=$(bitcoin-cli -regtest -rpcwallet=$bwallet getnewaddress "Taproot Address" bech32m)
 check_cmd "New taproot address generation"
 NEW_TAPROOT_ADDR=$(trim "$NEW_TAPROOT_ADDR")
 
 # STUDENT TASK: Get the address info to extract the internal key
 # WRITE YOUR SOLUTION BELOW:
-ADDR_INFO=
+ADDR_INFO=$(bitcoin-cli -regtest -rpcwallet=$bwallet getaddressinfo "$NEW_TAPROOT_ADDR")
 check_cmd "Getting address info"
 
 # STUDENT TASK: Extract the internal key (the x-only pubkey) from the descriptor
 # WRITE YOUR SOLUTION BELOW:
-INTERNAL_KEY=
+
+# INTERNAL_KEY=$(echo "$ADDR_INFO" | jq -r '.desc' | sed -n 's/tr(\[[^]]*\]\([a-f0-9]\+\)).*/\1/p')
+# Extract descriptor
+DESCRIPTOR=$(echo "$ADDR_INFO" | jq -r '.desc')
+
+
+# Extract the internal key (x-only public key) correctly
+INTERNAL_KEY=$(echo "$DESCRIPTOR" | sed -E 's/tr\(\[[^]]+\]([a-f0-9]+)\).*/\1/')
 check_cmd "Extracting key from descriptor"
 INTERNAL_KEY=$(trim "$INTERNAL_KEY")
+echo "$INTERNAL_KEY"
 
 # STUDENT TASK: Create a proper descriptor with just the key
 # WRITE YOUR SOLUTION BELOW:
 echo "Using internal key: $INTERNAL_KEY"
-SIMPLE_DESCRIPTOR=
+SIMPLE_DESCRIPTOR="tr($INTERNAL_KEY)"
 echo "Simple descriptor: $SIMPLE_DESCRIPTOR"
 
 # STUDENT TASK: Get a proper descriptor with checksum
 # WRITE YOUR SOLUTION BELOW:
-TAPROOT_DESCRIPTOR=
+TAPROOT_DESCRIPTOR=$(bitcoin-cli -regtest getdescriptorinfo "$SIMPLE_DESCRIPTOR" | jq -r '.descriptor')
 check_cmd "Descriptor generation"
 TAPROOT_DESCRIPTOR=$(trim "$TAPROOT_DESCRIPTOR")
 echo "Taproot treasure map: $TAPROOT_DESCRIPTOR"
 
 # STUDENT TASK: Derive an address from the descriptor
 # WRITE YOUR SOLUTION BELOW:
-DERIVED_ADDR_RAW=
+DERIVED_ADDR_RAW=$(bitcoin-cli -regtest deriveaddresses "$TAPROOT_DESCRIPTOR")
 check_cmd "Address derivation"
 DERIVED_ADDR=$(echo "$DERIVED_ADDR_RAW" | tr -d '[]" \n\t')
 echo "Derived quantum vault address: $DERIVED_ADDR"
